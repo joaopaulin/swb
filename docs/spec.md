@@ -52,25 +52,19 @@ A interface deve ter três áreas principais:
 
 ## 1. Toolbar
 
-Funções:
+Barra superior com os botões de ação do projeto. A grid é sempre visível no canvas, portanto a toolbar não precisa de controle para exibí-la ou ocultá-la.
 
-* Novo wireframe
-* Salvar
-* Carregar
-* Exportar PNG
-* Mostrar/ocultar grid
-* Zoom (opcional)
+### Botões
 
-Botões sugeridos:
+| Botão          | Ação |
+|----------------|------|
+| **New**        | Limpa o canvas e inicia um novo wireframe. Antes de limpar, pergunta ao usuário se deseja salvar o projeto atual. |
+| **Save**       | Salva o wireframe em arquivo `.json` utilizando a **janela nativa do sistema** para escolher o destino. |
+| **Load**       | Carrega um wireframe a partir de um arquivo `.json`, usando a **janela nativa do sistema** para seleção. |
+| **Export PNG**  | Exporta o canvas como imagem PNG, abrindo a **janela nativa do sistema** para definir onde salvar. |
+| **Clear**      | Remove todos os elementos do canvas sem criar um novo projeto. |
 
-```
-New
-Save
-Load
-Export PNG
-Toggle Grid
-Clear
-```
+> As operações de arquivo (Save, Load e Export PNG) utilizam diálogos nativos do navegador — não é necessário implementar modais customizadas para essas funções.
 
 ---
 

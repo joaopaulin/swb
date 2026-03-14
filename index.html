@@ -104,9 +104,7 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
     linear-gradient(to bottom,#f0f0f0 1px,transparent 1px);
   transition:background-image .2s;
 }
-#canvas.no-grid{
-  background-image:none;
-}
+
 
 /* ==============================
    WIREFRAME ELEMENTS
@@ -249,14 +247,14 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 <div id="toolbar">
   <span class="brand">⬡ Simple Wireframe Builder</span>
   <button id="btn-new" title="Novo wireframe">🗎 New</button>
-  <button id="btn-save" title="Salvar no LocalStorage">💾 Save</button>
-  <button id="btn-load" title="Carregar do LocalStorage">📂 Load</button>
+  <button id="btn-save" title="Salvar como arquivo JSON">💾 Save</button>
+  <button id="btn-load" title="Carregar arquivo JSON">📂 Load</button>
   <div class="separator"></div>
   <button id="btn-export" title="Exportar como PNG">📷 Export PNG</button>
   <div class="separator"></div>
-  <button id="btn-grid" title="Mostrar/ocultar grid">⊞ Toggle Grid</button>
   <button id="btn-clear" class="danger" title="Limpar canvas">🗑 Clear</button>
 </div>
+<input type="file" id="file-load-input" accept=".json" style="display:none">
 
 <!-- ==============================
      SIDEBAR
@@ -318,7 +316,6 @@ html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-sy
 let elements = [];
 let selectedId = null;
 let gridSize = 10;
-let gridVisible = true;
 let idCounter = 0;
 
 const canvas = document.getElementById('canvas');
@@ -621,33 +618,50 @@ document.addEventListener('keydown',e=>{
 });
 
 /* ======================
-   SAVE / LOAD
+   SAVE / LOAD (native file dialogs)
    ====================== */
 function saveProject(){
-  localStorage.setItem('wireframe-project', JSON.stringify(elements));
+  const json = JSON.stringify(elements, null, 2);
+  const blob = new Blob([json], {type: 'application/json'});
+  const link = document.createElement('a');
+  link.download = 'wireframe.json';
+  link.href = URL.createObjectURL(blob);
+  link.click();
+  URL.revokeObjectURL(link.href);
   toast('💾 Project saved');
 }
 
+const fileInput = document.getElementById('file-load-input');
+
 function loadProject(){
-  const data = localStorage.getItem('wireframe-project');
-  if(!data){ toast('No saved project found'); return; }
-  try{
-    elements = JSON.parse(data);
-    selectedId = null;
-    renderAll();
-    toast('📂 Project loaded');
-  }catch(e){
-    toast('Error loading project');
-  }
+  fileInput.click();
 }
+
+fileInput.addEventListener('change', ()=>{
+  const file = fileInput.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    try{
+      elements = JSON.parse(ev.target.result);
+      selectedId = null;
+      renderAll();
+      toast('📂 Project loaded: ' + file.name);
+    }catch(e){
+      toast('❌ Error loading file');
+    }
+  };
+  reader.readAsText(file);
+  fileInput.value = '';
+});
 
 /* ======================
    EXPORT PNG
    ====================== */
 function exportPNG(){
-  // hide grid + selection
-  const hadGrid = gridVisible;
-  canvas.classList.add('no-grid');
+  // hide grid + selection for clean capture
+  const origBg = canvas.style.backgroundImage;
+  canvas.style.backgroundImage = 'none';
   const prevSel = selectedId;
   selectElement(null);
 
@@ -664,11 +678,11 @@ function exportPNG(){
       link.href = c.toDataURL();
       link.click();
       // restore
-      if(hadGrid) canvas.classList.remove('no-grid');
+      canvas.style.backgroundImage = origBg;
       if(prevSel) selectElement(prevSel);
       toast('✅ Exported wireframe.png');
     }).catch(()=>{
-      if(hadGrid) canvas.classList.remove('no-grid');
+      canvas.style.backgroundImage = origBg;
       toast('❌ Export failed');
     });
   },100);
@@ -678,7 +692,10 @@ function exportPNG(){
    TOOLBAR ACTIONS
    ====================== */
 document.getElementById('btn-new').addEventListener('click',()=>{
-  if(elements.length && !confirm('Create new wireframe? Unsaved changes will be lost.')) return;
+  if(elements.length){
+    const action = confirm('Deseja salvar o wireframe atual antes de criar um novo?');
+    if(action) saveProject();
+  }
   elements = [];
   selectedId = null;
   renderAll();
@@ -688,12 +705,6 @@ document.getElementById('btn-new').addEventListener('click',()=>{
 document.getElementById('btn-save').addEventListener('click', saveProject);
 document.getElementById('btn-load').addEventListener('click', loadProject);
 document.getElementById('btn-export').addEventListener('click', exportPNG);
-
-document.getElementById('btn-grid').addEventListener('click',()=>{
-  gridVisible = !gridVisible;
-  canvas.classList.toggle('no-grid', !gridVisible);
-  toast(gridVisible ? '⊞ Grid visible' : '⊞ Grid hidden');
-});
 
 document.getElementById('btn-clear').addEventListener('click',()=>{
   if(elements.length && !confirm('Clear all elements?')) return;
@@ -706,12 +717,7 @@ document.getElementById('btn-clear').addEventListener('click',()=>{
 /* ======================
    INIT
    ====================== */
-// Auto-load if data exists
-const saved = localStorage.getItem('wireframe-project');
-if(saved){
-  try{ elements = JSON.parse(saved); } catch(e){}
-  renderAll();
-}
+renderAll();
 
 })();
 </script>
