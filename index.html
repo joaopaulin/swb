@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simple Wireframe Builder</title>
+<meta name="description" content="Simple Wireframe Builder – Crie protótipos rápidos de interfaces e exporte como PNG.">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+<style>
+/* ==============================
+   RESET & GLOBALS
+   ============================== */
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --toolbar-h:52px;
+  --sidebar-w:220px;
+  --grid-size:10px;
+  --accent:#0d6efd;
+  --bg-dark:#1e1e2e;
+  --bg-sidebar:#252538;
+  --bg-toolbar:#1a1a2e;
+  --text-light:#cdd6f4;
+  --text-muted:#7f849c;
+  --surface:#313244;
+  --border:#45475a;
+}
+html,body{height:100%;overflow:hidden;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg-dark);color:var(--text-light)}
+
+/* ==============================
+   TOOLBAR
+   ============================== */
+#toolbar{
+  height:var(--toolbar-h);
+  background:var(--bg-toolbar);
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:6px;
+  padding:0 16px;
+  position:fixed;top:0;left:0;right:0;z-index:100;
+}
+#toolbar .brand{
+  font-weight:700;font-size:15px;margin-right:16px;
+  background:linear-gradient(135deg,#89b4fa,#cba6f7);
+  background-clip:text;-webkit-background-clip:text;-webkit-text-fill-color:transparent;color:transparent;
+  letter-spacing:-.3px;
+}
+#toolbar button{
+  background:var(--surface);color:var(--text-light);
+  border:1px solid var(--border);border-radius:6px;
+  padding:5px 14px;font-size:13px;cursor:pointer;
+  transition:all .15s;white-space:nowrap;
+}
+#toolbar button:hover{background:var(--accent);border-color:var(--accent);color:#fff}
+#toolbar button.danger{color:#f38ba8}
+#toolbar button.danger:hover{background:#f38ba8;color:#1e1e2e;border-color:#f38ba8}
+#toolbar .separator{width:1px;height:28px;background:var(--border);margin:0 6px}
+
+/* ==============================
+   SIDEBAR
+   ============================== */
+#sidebar{
+  position:fixed;top:var(--toolbar-h);left:0;bottom:0;
+  width:var(--sidebar-w);
+  background:var(--bg-sidebar);
+  border-right:1px solid var(--border);
+  overflow-y:auto;padding:12px 10px;z-index:50;
+}
+#sidebar::-webkit-scrollbar{width:5px}
+#sidebar::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+#sidebar h6{
+  font-size:10px;text-transform:uppercase;letter-spacing:1.2px;
+  color:var(--text-muted);margin:14px 0 6px;
+}
+#sidebar h6:first-child{margin-top:0}
+.sidebar-item{
+  display:flex;align-items:center;gap:8px;
+  padding:7px 10px;border-radius:6px;
+  font-size:13px;cursor:grab;
+  color:var(--text-light);
+  transition:background .15s;
+  user-select:none;
+}
+.sidebar-item:hover{background:var(--surface)}
+.sidebar-item .icon{
+  width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+  border-radius:4px;background:var(--surface);font-size:12px;flex-shrink:0;
+}
+
+/* ==============================
+   CANVAS
+   ============================== */
+#canvas-wrapper{
+  position:fixed;
+  top:var(--toolbar-h);left:var(--sidebar-w);right:0;bottom:0;
+  overflow:auto;background:#2b2b3d;
+}
+#canvas{
+  position:relative;
+  width:1440px;height:2000px;
+  background:#ffffff;
+  background-size:var(--grid-size) var(--grid-size);
+  background-image:
+    linear-gradient(to right,#f0f0f0 1px,transparent 1px),
+    linear-gradient(to bottom,#f0f0f0 1px,transparent 1px);
+  transition:background-image .2s;
+}
+#canvas.no-grid{
+  background-image:none;
+}
+
+/* ==============================
+   WIREFRAME ELEMENTS
+   ============================== */
+.wireframe-element{
+  position:absolute;
+  border:1px solid #bbb;
+  background:#fff;
+  font-size:14px;
+  color:#555;
+  box-sizing:border-box;
+  cursor:move;
+  overflow:hidden;
+  user-select:none;
+  transition:box-shadow .1s;
+}
+.wireframe-element:hover{box-shadow:0 0 0 1px var(--accent)}
+.wireframe-element.selected{
+  outline:2px dashed var(--accent);
+  outline-offset:1px;
+  z-index:10;
+}
+
+/* inner content wrappers */
+.we-inner{pointer-events:none;width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:6px 10px;overflow:hidden}
+.we-inner.top-left{align-items:flex-start;justify-content:flex-start}
+
+/* ---- component-specific styles ---- */
+.we-button{
+  background:#0d6efd;color:#fff;border-radius:5px;border:1px solid #0b5ed7;
+  font-size:14px;font-weight:500;
+}
+.we-input{
+  border:1px solid #ced4da;border-radius:5px;background:#fff;
+  font-size:14px;color:#999;padding:6px 12px;
+}
+.we-input .we-inner{justify-content:flex-start}
+.we-textarea{
+  border:1px solid #ced4da;border-radius:5px;background:#fff;
+  font-size:14px;color:#999;padding:6px 12px;
+}
+.we-textarea .we-inner{align-items:flex-start;justify-content:flex-start}
+.we-select{
+  border:1px solid #ced4da;border-radius:5px;background:#fff;
+  font-size:14px;color:#555;padding:6px 12px;
+}
+.we-select .we-inner{justify-content:space-between}
+.we-checkbox .we-inner,.we-radio .we-inner{justify-content:flex-start;gap:6px}
+.we-card{
+  border:1px solid #dee2e6;border-radius:8px;background:#fff;overflow:hidden;
+}
+.we-card .card-header{background:#f8f9fa;border-bottom:1px solid #dee2e6;padding:8px 12px;font-weight:600;font-size:14px;color:#333}
+.we-card .card-body{padding:10px 12px;font-size:13px;color:#666}
+.we-container{border:2px dashed #ccc;background:rgba(0,0,0,.01);border-radius:4px}
+.we-row{border:1px dashed #ccc;background:rgba(13,110,253,.03);border-radius:4px}
+.we-datatable{border:1px solid #dee2e6;border-radius:4px;overflow:hidden;font-size:13px}
+.we-datatable table{width:100%;border-collapse:collapse}
+.we-datatable th{background:#f8f9fa;border-bottom:2px solid #dee2e6;padding:6px 10px;text-align:left;font-weight:600;color:#333}
+.we-datatable td{border-bottom:1px solid #eee;padding:5px 10px;color:#666}
+.we-navbar{background:#343a40;border-radius:4px;display:flex;align-items:center;padding:0 16px;color:#fff;font-size:14px;gap:20px}
+.we-label .we-inner{justify-content:flex-start;font-weight:500;color:#333}
+.we-heading{font-weight:700;color:#222}
+.we-heading .we-inner{justify-content:flex-start;font-size:20px}
+.we-paragraph .we-inner{justify-content:flex-start;align-items:flex-start;font-size:13px;line-height:1.5;color:#666}
+.we-image-placeholder{border:2px dashed #ccc;background:#f8f9fa;display:flex;align-items:center;justify-content:center;color:#aaa}
+.we-divider{background:transparent;border:none;display:flex;align-items:center}
+.we-divider hr{width:100%;border:none;border-top:1px solid #dee2e6;margin:0}
+
+/* ==============================
+   RESIZE HANDLES
+   ============================== */
+.resize-handle{
+  position:absolute;width:10px;height:10px;
+  background:var(--accent);border:1px solid #fff;border-radius:2px;
+  z-index:20;
+}
+.resize-handle.nw{top:-5px;left:-5px;cursor:nw-resize}
+.resize-handle.ne{top:-5px;right:-5px;cursor:ne-resize}
+.resize-handle.sw{bottom:-5px;left:-5px;cursor:sw-resize}
+.resize-handle.se{bottom:-5px;right:-5px;cursor:se-resize}
+
+/* ==============================
+   CONTEXT ACTIONS (mini toolbar when selected)
+   ============================== */
+.element-actions{
+  position:absolute;top:-32px;right:0;
+  display:flex;gap:4px;z-index:30;
+}
+.element-actions button{
+  width:26px;height:26px;border:none;border-radius:4px;
+  background:var(--bg-toolbar);color:var(--text-light);
+  font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  box-shadow:0 2px 6px rgba(0,0,0,.3);
+}
+.element-actions button:hover{background:#f38ba8;color:#1e1e2e}
+
+/* ==============================
+   PROPERTY PANEL (inline edit)
+   ============================== */
+#prop-panel{
+  position:fixed;bottom:12px;right:12px;
+  background:var(--bg-toolbar);border:1px solid var(--border);
+  border-radius:10px;padding:14px 16px;z-index:200;
+  display:none;min-width:240px;box-shadow:0 8px 30px rgba(0,0,0,.4);
+}
+#prop-panel h6{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:10px}
+#prop-panel label{font-size:12px;color:var(--text-muted);display:block;margin:6px 0 2px}
+#prop-panel input[type="text"],#prop-panel input[type="number"]{
+  width:100%;padding:5px 8px;border:1px solid var(--border);border-radius:5px;
+  background:var(--surface);color:var(--text-light);font-size:13px;
+}
+
+/* ==============================
+   TOAST
+   ============================== */
+.toast-msg{
+  position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  background:var(--bg-toolbar);color:var(--text-light);
+  border:1px solid var(--border);border-radius:8px;
+  padding:10px 22px;font-size:13px;z-index:9999;
+  box-shadow:0 4px 20px rgba(0,0,0,.4);
+  animation:toastIn .3s ease;
+}
+@keyframes toastIn{from{opacity:0;transform:translateX(-50%) translateY(10px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+
+/* ==============================
+   DROP HINT
+   ============================== */
+#canvas.dragover{
+  outline:2px dashed var(--accent);
+  outline-offset:-2px;
+}
+</style>
+</head>
+<body>
+
+<!-- ==============================
+     TOOLBAR
+     ============================== -->
+<div id="toolbar">
+  <span class="brand">⬡ Simple Wireframe Builder</span>
+  <button id="btn-new" title="Novo wireframe">🗎 New</button>
+  <button id="btn-save" title="Salvar no LocalStorage">💾 Save</button>
+  <button id="btn-load" title="Carregar do LocalStorage">📂 Load</button>
+  <div class="separator"></div>
+  <button id="btn-export" title="Exportar como PNG">📷 Export PNG</button>
+  <div class="separator"></div>
+  <button id="btn-grid" title="Mostrar/ocultar grid">⊞ Toggle Grid</button>
+  <button id="btn-clear" class="danger" title="Limpar canvas">🗑 Clear</button>
+</div>
+
+<!-- ==============================
+     SIDEBAR
+     ============================== -->
+<div id="sidebar">
+  <h6>Structural</h6>
+  <div class="sidebar-item" draggable="true" data-type="container"><span class="icon">▢</span>Container</div>
+  <div class="sidebar-item" draggable="true" data-type="row"><span class="icon">⊟</span>Row</div>
+  <div class="sidebar-item" draggable="true" data-type="card"><span class="icon">▣</span>Card</div>
+  <div class="sidebar-item" draggable="true" data-type="datatable"><span class="icon">⊞</span>Datatable</div>
+  <div class="sidebar-item" draggable="true" data-type="navbar"><span class="icon">▬</span>Navbar</div>
+
+  <h6>Form</h6>
+  <div class="sidebar-item" draggable="true" data-type="label"><span class="icon">A</span>Label</div>
+  <div class="sidebar-item" draggable="true" data-type="input"><span class="icon">▭</span>Input</div>
+  <div class="sidebar-item" draggable="true" data-type="textarea"><span class="icon">▯</span>Textarea</div>
+  <div class="sidebar-item" draggable="true" data-type="select"><span class="icon">▾</span>Select</div>
+  <div class="sidebar-item" draggable="true" data-type="checkbox"><span class="icon">☑</span>Checkbox</div>
+  <div class="sidebar-item" draggable="true" data-type="radio"><span class="icon">◉</span>Radio</div>
+  <div class="sidebar-item" draggable="true" data-type="button"><span class="icon">⏵</span>Button</div>
+
+  <h6>Content</h6>
+  <div class="sidebar-item" draggable="true" data-type="heading"><span class="icon">H</span>Heading</div>
+  <div class="sidebar-item" draggable="true" data-type="paragraph"><span class="icon">¶</span>Paragraph</div>
+  <div class="sidebar-item" draggable="true" data-type="image-placeholder"><span class="icon">🖼</span>Image Placeholder</div>
+  <div class="sidebar-item" draggable="true" data-type="divider"><span class="icon">—</span>Divider</div>
+</div>
+
+<!-- ==============================
+     CANVAS
+     ============================== -->
+<div id="canvas-wrapper">
+  <div id="canvas"></div>
+</div>
+
+<!-- ==============================
+     PROPERTY PANEL
+     ============================== -->
+<div id="prop-panel">
+  <h6>Properties</h6>
+  <label>Text</label>
+  <input type="text" id="prop-text">
+  <label>Width</label>
+  <input type="number" id="prop-w" step="10">
+  <label>Height</label>
+  <input type="number" id="prop-h" step="10">
+</div>
+
+<!-- ==============================
+     JAVASCRIPT
+     ============================== -->
+<script>
+(function(){
+"use strict";
+
+/* ======================
+   STATE
+   ====================== */
+let elements = [];
+let selectedId = null;
+let gridSize = 10;
+let gridVisible = true;
+let idCounter = 0;
+
+const canvas = document.getElementById('canvas');
+const canvasWrapper = document.getElementById('canvas-wrapper');
+const propPanel = document.getElementById('prop-panel');
+const propText = document.getElementById('prop-text');
+const propW = document.getElementById('prop-w');
+const propH = document.getElementById('prop-h');
+
+/* ======================
+   UTILITIES
+   ====================== */
+function snap(value){
+  return Math.round(value / gridSize) * gridSize;
+}
+function uid(){
+  return 'el_' + (++idCounter) + '_' + Date.now().toString(36);
+}
+function toast(msg){
+  const t = document.createElement('div');
+  t.className = 'toast-msg';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2000);
+}
+function findEl(id){
+  return elements.find(e=>e.id===id);
+}
+
+/* ======================
+   COMPONENT REGISTRY
+   ====================== */
+const components = {
+  container:   { w:400, h:300, text:'Container',  render(el){ return `<div class="we-inner top-left" style="font-size:11px;color:#aaa;padding:8px">Container</div>`; }},
+  row:         { w:500, h:60,  text:'Row',         render(el){ return `<div class="we-inner" style="font-size:11px;color:#aaa">Row</div>`; }},
+  card:        { w:300, h:180, text:'Card Title',  render(el){ return `<div class="card-header">${esc(el.text)}</div><div class="card-body">Card content goes here.</div>`; }},
+  datatable:   { w:500, h:160, text:'',            render(){ return `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Role</th></tr></thead><tbody><tr><td>1</td><td>Alice</td><td>alice@mail.com</td><td>Admin</td></tr><tr><td>2</td><td>Bob</td><td>bob@mail.com</td><td>User</td></tr><tr><td>3</td><td>Carol</td><td>carol@mail.com</td><td>User</td></tr></tbody></table>`; }},
+  navbar:      { w:600, h:50,  text:'Brand',       render(el){ return `<span style="font-weight:700">${esc(el.text)}</span><span style="opacity:.7">Home</span><span style="opacity:.7">About</span><span style="opacity:.7">Contact</span>`; }},
+  label:       { w:120, h:30,  text:'Label',       render(el){ return `<div class="we-inner" style="justify-content:flex-start;font-weight:500;color:#333">${esc(el.text)}</div>`; }},
+  input:       { w:260, h:40,  text:'Placeholder', render(el){ return `<div class="we-inner" style="justify-content:flex-start;color:#999">${esc(el.text)}</div>`; }},
+  textarea:    { w:300, h:100, text:'Text area...', render(el){ return `<div class="we-inner top-left" style="color:#999">${esc(el.text)}</div>`; }},
+  select:      { w:260, h:40,  text:'Select option', render(el){ return `<div class="we-inner" style="justify-content:space-between"><span>${esc(el.text)}</span><span>▾</span></div>`; }},
+  checkbox:    { w:160, h:30,  text:'Checkbox',    render(el){ return `<div class="we-inner" style="justify-content:flex-start;gap:6px"><span style="display:inline-block;width:16px;height:16px;border:2px solid #adb5bd;border-radius:3px"></span><span>${esc(el.text)}</span></div>`; }},
+  radio:       { w:160, h:30,  text:'Radio',       render(el){ return `<div class="we-inner" style="justify-content:flex-start;gap:6px"><span style="display:inline-block;width:16px;height:16px;border:2px solid #adb5bd;border-radius:50%"></span><span>${esc(el.text)}</span></div>`; }},
+  button:      { w:120, h:40,  text:'Button',      render(el){ return `<div class="we-inner">${esc(el.text)}</div>`; }},
+  heading:     { w:300, h:40,  text:'Heading',     render(el){ return `<div class="we-inner" style="justify-content:flex-start;font-size:20px;font-weight:700;color:#222">${esc(el.text)}</div>`; }},
+  paragraph:   { w:400, h:80,  text:'Lorem ipsum dolor sit amet, consectetur adipiscing elit.', render(el){ return `<div class="we-inner top-left" style="font-size:13px;line-height:1.5;color:#666">${esc(el.text)}</div>`; }},
+  'image-placeholder': { w:200, h:150, text:'Image', render(el){ return `<div class="we-inner" style="flex-direction:column;gap:4px;color:#aaa"><span style="font-size:28px">🖼</span><span style="font-size:11px">${esc(el.text)}</span></div>`; }},
+  divider:     { w:400, h:20,  text:'',            render(){ return `<hr style="width:100%;border:none;border-top:1px solid #dee2e6;margin:0">`; }},
+};
+
+function esc(s){ const d=document.createElement('div');d.textContent=s||'';return d.innerHTML; }
+
+/* ======================
+   RENDER
+   ====================== */
+function renderElement(el){
+  let dom = document.getElementById(el.id);
+  const isNew = !dom;
+  if(isNew){
+    dom = document.createElement('div');
+    dom.id = el.id;
+    dom.className = 'wireframe-element';
+    canvas.appendChild(dom);
+  }
+  const comp = components[el.type];
+  // base class
+  dom.className = 'wireframe-element we-' + el.type;
+  if(el.id === selectedId) dom.classList.add('selected');
+  // position
+  dom.style.left = el.x + 'px';
+  dom.style.top = el.y + 'px';
+  dom.style.width = el.width + 'px';
+  dom.style.height = el.height + 'px';
+  // inner content
+  dom.innerHTML = (comp ? comp.render(el) : `<div class="we-inner">${esc(el.type)}</div>`) + (el.id === selectedId ? renderHandles() + renderActions(el.id) : '');
+}
+
+function renderHandles(){
+  return `<div class="resize-handle nw" data-dir="nw"></div>
+  <div class="resize-handle ne" data-dir="ne"></div>
+  <div class="resize-handle sw" data-dir="sw"></div>
+  <div class="resize-handle se" data-dir="se"></div>`;
+}
+
+function renderActions(id){
+  return `<div class="element-actions">
+    <button class="act-dup" title="Duplicate" data-id="${id}">⧉</button>
+    <button class="act-del" title="Delete" data-id="${id}">✕</button>
+  </div>`;
+}
+
+function renderAll(){
+  // remove orphan DOMs
+  const ids = new Set(elements.map(e=>e.id));
+  canvas.querySelectorAll('.wireframe-element').forEach(d=>{
+    if(!ids.has(d.id)) d.remove();
+  });
+  elements.forEach(renderElement);
+}
+
+/* ======================
+   SELECTION
+   ====================== */
+function selectElement(id){
+  selectedId = id;
+  renderAll();
+  updatePropPanel();
+}
+
+function updatePropPanel(){
+  const el = findEl(selectedId);
+  if(!el){ propPanel.style.display='none'; return; }
+  propPanel.style.display='block';
+  propText.value = el.text || '';
+  propW.value = el.width;
+  propH.value = el.height;
+}
+
+propText.addEventListener('input',()=>{
+  const el = findEl(selectedId);
+  if(el){ el.text = propText.value; renderElement(el); }
+});
+propW.addEventListener('change',()=>{
+  const el = findEl(selectedId);
+  if(el){ el.width = snap(parseInt(propW.value)||10); renderElement(el); updatePropPanel(); }
+});
+propH.addEventListener('change',()=>{
+  const el = findEl(selectedId);
+  if(el){ el.height = snap(parseInt(propH.value)||10); renderElement(el); updatePropPanel(); }
+});
+
+/* ======================
+   DRAG & DROP FROM SIDEBAR
+   ====================== */
+document.querySelectorAll('.sidebar-item').forEach(item=>{
+  item.addEventListener('dragstart',e=>{
+    e.dataTransfer.setData('component-type', item.dataset.type);
+    e.dataTransfer.effectAllowed = 'copy';
+  });
+});
+
+canvas.addEventListener('dragover',e=>{
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'copy';
+  canvas.classList.add('dragover');
+});
+canvas.addEventListener('dragleave',()=>canvas.classList.remove('dragover'));
+canvas.addEventListener('drop',e=>{
+  e.preventDefault();
+  canvas.classList.remove('dragover');
+  const type = e.dataTransfer.getData('component-type');
+  if(!type || !components[type]) return;
+  const rect = canvas.getBoundingClientRect();
+  const comp = components[type];
+  const el = {
+    id: uid(),
+    type,
+    x: snap(e.clientX - rect.left + canvasWrapper.scrollLeft),
+    y: snap(e.clientY - rect.top + canvasWrapper.scrollTop),
+    width: comp.w,
+    height: comp.h,
+    text: comp.text
+  };
+  elements.push(el);
+  selectElement(el.id);
+});
+
+/* ======================
+   MOVE ELEMENTS
+   ====================== */
+let moving = null;
+
+canvas.addEventListener('mousedown',e=>{
+  const handle = e.target.closest('.resize-handle');
+  if(handle){ startResize(e, handle); return; }
+
+  // action buttons
+  if(e.target.closest('.act-del')){
+    const id = e.target.closest('.act-del').dataset.id;
+    elements = elements.filter(el=>el.id!==id);
+    selectElement(null);
+    renderAll();
+    return;
+  }
+  if(e.target.closest('.act-dup')){
+    const id = e.target.closest('.act-dup').dataset.id;
+    const src = findEl(id);
+    if(src){
+      const dup = {...src, id:uid(), x:src.x+20, y:src.y+20};
+      elements.push(dup);
+      selectElement(dup.id);
+    }
+    return;
+  }
+
+  const dom = e.target.closest('.wireframe-element');
+  if(!dom){ selectElement(null); return; }
+  const el = findEl(dom.id);
+  if(!el) return;
+  selectElement(el.id);
+  const startX = e.clientX, startY = e.clientY;
+  const origX = el.x, origY = el.y;
+  moving = {el, startX, startY, origX, origY};
+  e.preventDefault();
+});
+
+document.addEventListener('mousemove',e=>{
+  if(moving){
+    const dx = e.clientX - moving.startX;
+    const dy = e.clientY - moving.startY;
+    moving.el.x = snap(moving.origX + dx);
+    moving.el.y = snap(moving.origY + dy);
+    if(moving.el.x < 0) moving.el.x = 0;
+    if(moving.el.y < 0) moving.el.y = 0;
+    renderElement(moving.el);
+  }
+  if(resizing) doResize(e);
+});
+
+document.addEventListener('mouseup',()=>{
+  moving = null;
+  resizing = null;
+});
+
+/* ======================
+   RESIZE ELEMENTS
+   ====================== */
+let resizing = null;
+
+function startResize(e, handle){
+  e.preventDefault();
+  e.stopPropagation();
+  const dom = handle.closest('.wireframe-element');
+  const el = findEl(dom.id);
+  if(!el) return;
+  resizing = {
+    el,
+    dir: handle.dataset.dir,
+    startX: e.clientX,
+    startY: e.clientY,
+    origX: el.x,
+    origY: el.y,
+    origW: el.width,
+    origH: el.height,
+  };
+}
+
+function doResize(e){
+  if(!resizing) return;
+  const r = resizing;
+  const dx = e.clientX - r.startX;
+  const dy = e.clientY - r.startY;
+  const minW = 30, minH = 20;
+
+  if(r.dir === 'se'){
+    r.el.width = snap(Math.max(minW, r.origW + dx));
+    r.el.height = snap(Math.max(minH, r.origH + dy));
+  } else if(r.dir === 'sw'){
+    const newW = snap(Math.max(minW, r.origW - dx));
+    r.el.x = snap(r.origX + r.origW - newW);
+    r.el.width = newW;
+    r.el.height = snap(Math.max(minH, r.origH + dy));
+  } else if(r.dir === 'ne'){
+    r.el.width = snap(Math.max(minW, r.origW + dx));
+    const newH = snap(Math.max(minH, r.origH - dy));
+    r.el.y = snap(r.origY + r.origH - newH);
+    r.el.height = newH;
+  } else if(r.dir === 'nw'){
+    const newW = snap(Math.max(minW, r.origW - dx));
+    const newH = snap(Math.max(minH, r.origH - dy));
+    r.el.x = snap(r.origX + r.origW - newW);
+    r.el.y = snap(r.origY + r.origH - newH);
+    r.el.width = newW;
+    r.el.height = newH;
+  }
+  renderElement(r.el);
+  updatePropPanel();
+}
+
+/* ======================
+   KEYBOARD SHORTCUTS
+   ====================== */
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='TEXTAREA') return;
+  const el = findEl(selectedId);
+  if(!el) return;
+  if(e.key==='Delete'||e.key==='Backspace'){
+    elements = elements.filter(x=>x.id!==selectedId);
+    selectElement(null);
+    renderAll();
+    e.preventDefault();
+  }
+  // arrow keys to nudge
+  const step = e.shiftKey ? gridSize*5 : gridSize;
+  if(e.key==='ArrowLeft'){el.x=snap(Math.max(0,el.x-step));renderElement(el);e.preventDefault();}
+  if(e.key==='ArrowRight'){el.x=snap(el.x+step);renderElement(el);e.preventDefault();}
+  if(e.key==='ArrowUp'){el.y=snap(Math.max(0,el.y-step));renderElement(el);e.preventDefault();}
+  if(e.key==='ArrowDown'){el.y=snap(el.y+step);renderElement(el);e.preventDefault();}
+});
+
+/* ======================
+   SAVE / LOAD
+   ====================== */
+function saveProject(){
+  localStorage.setItem('wireframe-project', JSON.stringify(elements));
+  toast('💾 Project saved');
+}
+
+function loadProject(){
+  const data = localStorage.getItem('wireframe-project');
+  if(!data){ toast('No saved project found'); return; }
+  try{
+    elements = JSON.parse(data);
+    selectedId = null;
+    renderAll();
+    toast('📂 Project loaded');
+  }catch(e){
+    toast('Error loading project');
+  }
+}
+
+/* ======================
+   EXPORT PNG
+   ====================== */
+function exportPNG(){
+  // hide grid + selection
+  const hadGrid = gridVisible;
+  canvas.classList.add('no-grid');
+  const prevSel = selectedId;
+  selectElement(null);
+
+  toast('📷 Exporting...');
+
+  setTimeout(()=>{
+    html2canvas(canvas,{
+      backgroundColor:'#ffffff',
+      scale:2,
+      useCORS:true,
+    }).then(c=>{
+      const link = document.createElement('a');
+      link.download = 'wireframe.png';
+      link.href = c.toDataURL();
+      link.click();
+      // restore
+      if(hadGrid) canvas.classList.remove('no-grid');
+      if(prevSel) selectElement(prevSel);
+      toast('✅ Exported wireframe.png');
+    }).catch(()=>{
+      if(hadGrid) canvas.classList.remove('no-grid');
+      toast('❌ Export failed');
+    });
+  },100);
+}
+
+/* ======================
+   TOOLBAR ACTIONS
+   ====================== */
+document.getElementById('btn-new').addEventListener('click',()=>{
+  if(elements.length && !confirm('Create new wireframe? Unsaved changes will be lost.')) return;
+  elements = [];
+  selectedId = null;
+  renderAll();
+  toast('🗎 New wireframe');
+});
+
+document.getElementById('btn-save').addEventListener('click', saveProject);
+document.getElementById('btn-load').addEventListener('click', loadProject);
+document.getElementById('btn-export').addEventListener('click', exportPNG);
+
+document.getElementById('btn-grid').addEventListener('click',()=>{
+  gridVisible = !gridVisible;
+  canvas.classList.toggle('no-grid', !gridVisible);
+  toast(gridVisible ? '⊞ Grid visible' : '⊞ Grid hidden');
+});
+
+document.getElementById('btn-clear').addEventListener('click',()=>{
+  if(elements.length && !confirm('Clear all elements?')) return;
+  elements = [];
+  selectedId = null;
+  renderAll();
+  toast('🗑 Canvas cleared');
+});
+
+/* ======================
+   INIT
+   ====================== */
+// Auto-load if data exists
+const saved = localStorage.getItem('wireframe-project');
+if(saved){
+  try{ elements = JSON.parse(saved); } catch(e){}
+  renderAll();
+}
+
+})();
+</script>
+</body>
+</html>
